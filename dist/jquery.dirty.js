@@ -14,11 +14,12 @@
     var clean = "clean";
     var dataInitialValue = "dirtyInitialValue";
     var dataIsDirty = "isDirty";
+    var _debug = false;
 
-    var getSingleton = function(id) {
+    var getSingleton = function(obj) {
         var result;
         singleDs.forEach(function(e) {
-            if (e.id === id) {
+            if (e.form.is(obj)) {
                 result = e;
             }
         });
@@ -41,28 +42,30 @@
 
     var setNamespacedEventTriggers = function(d) {
 
-        d.form.find("input, select, textarea").on("change click keyup keydown blur", function(e) {
+        d.form.find("input, select, textarea").on("change keyup keydown", function(e) {
             $(this).trigger(e.type + ".dirty");
         });
     };
 
     var setNamespacedEvents = function(d) {
 
-        d.form.find("input, select, textarea").on("change.dirty click.dirty keyup.dirty keydown.dirty blur.dirty", function(e) {
+        d.form.find("input, select, textarea").on("change.dirty keyup.dirty keydown.dirty", function(e) {
             d.checkValues(e);
         });
 
         d.form.on("dirty", function() {
+            if (_debug) console.log('dirty', d.form);
             d.options.onDirty();
         });
 
         d.form.on("clean", function() {
+            if (_debug) console.log('clean', d.form);
             d.options.onClean();
         });
     };
 
     var clearNamespacedEvents = function(d) {
-        d.form.find("input, select, textarea").off("change.dirty click.dirty keyup.dirty keydown.dirty blur.dirty");
+        d.form.find("input, select, textarea").off("change.dirty keyup.dirty keydown.dirty"); 
 
         d.form.off("dirty");
 
@@ -134,7 +137,7 @@
 
         isFieldDirty: function($field) {
             var initialValue = $field.data(dataInitialValue);
-             // Explicitly check for null/undefined here as value may be `false`, so ($field.data(dataInitialValue) || '') would not work
+            // Explicitly check for null/undefined here as value may be `false`, so ($field.data(dataInitialValue) || '') would not work
             if (initialValue == null) { initialValue = ''; }
             var currentValue = $field.val();
             if (currentValue == null) { currentValue = ''; }
@@ -168,7 +171,7 @@
 
         checkValues: function(e) {
             var d = this;
-            var formIsDirty = false;
+            var formIsDirty = d.isDirty;
 
             this.form.find("input, select, textarea").each(function(_, el) {
                 var isRadioOrCheckbox = d.isRadioOrCheckbox(el);
@@ -183,10 +186,10 @@
                 } else {
                     thisIsDirty = d.isFieldDirty($el);
                 }
-                
+
                 $el.data(dataIsDirty, thisIsDirty);
 
-                formIsDirty |= thisIsDirty;                
+                formIsDirty |= thisIsDirty;
             });
 
             if (formIsDirty) {
@@ -194,7 +197,7 @@
             } else {
                 d.setClean();
             }
-                       
+
             if (e) {
                 e.stopImmediatePropagation();
             }
@@ -267,42 +270,71 @@
         }
     };
 
-    $.fn.dirty = function(options) {
+    $.fn.dirty = function(actionOroptions, opts) {
 
-        if (typeof options === "string" && /^(isDirty|isClean|refreshEvents|resetForm|setAsClean|setAsDirty|showDirtyFields)$/i.test(options)) {
+        if (typeof actionOroptions === "string" && /^(isDirty|isClean|refreshEvents|resetForm|setAsClean|setAsDirty|showDirtyFields)$/i.test(actionOroptions)) {
             //Check if we have an instance of dirty for this form
             // TODO: check if this is DOM or jQuery object
-            var d = getSingleton($(this).attr("id"));
+            //var d = getSingleton($(this).attr("id"));
 
-            if (!d) {
-                d = new Dirty($(this), options);
-                d.init();
-            }
-            var optionsLowerCase = options.toLowerCase();
+            var options = opts;
 
-            switch (optionsLowerCase) {
-            case "isclean":
-                return !d.isDirty;
-            case "isdirty":
-                return d.isDirty;
-            case "refreshevents":
-                d.refreshEvents();
-            case "resetform":
-                d.resetForm();
-            case "setasclean":
-                return d.setAsClean();
-            case "setasdirty":
-                return d.setAsDirty();
-            case "showdirtyfields":
-                return d.showDirtyFields();            
-            }
+            var optionsLowerCase = actionOroptions.toLowerCase();
 
-        } else if (typeof options === "object" || !options) {
+            var result = null;
+
+            // apply to selected objects
+            this.each(function (_, e) {
+
+                // get dirty obj for this form
+                var d = getSingleton($(e));
+
+                if (!d) {
+                    options = $.extend({}, $.fn.dirty.defaults, options);
+                    d = new Dirty($(e), options);
+                    d.init();
+                    if (_debug) console.log('track form', e);
+                }
+
+                switch (optionsLowerCase) {
+                    case "isclean":
+                        if (result == null) { result = true; }
+                        result = result && !d.isDirty;
+                        break;
+                    case "isdirty":
+                        if (result == null) { result = false; }
+                        result = result || d.isDirty;
+                        break;
+                    case "refreshevents":
+                        d.refreshEvents();
+                        break;
+                    case "resetform":
+                        d.resetForm();
+                        break;
+                    case "setasclean":
+                        d.setAsClean();
+                        break;
+                    case "setasdirty":
+                        d.setAsDirty();
+                        break;
+                    case "showdirtyfields":
+                        if (result == null) { result = []; }
+                        result.push(d.showDirtyFields());
+                        break;
+                }
+            });
+
+            return result;
+
+        } else if (typeof actionOroptions === "object" || !actionOroptions) {
+
+            var options = actionOroptions;
 
             return this.each(function(_, e) {
                 options = $.extend({}, $.fn.dirty.defaults, options);
                 var dirty = new Dirty($(e), options);
                 dirty.init();
+                if (_debug) console.log('track form', e);
             });
 
         }
